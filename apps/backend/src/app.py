@@ -5,23 +5,15 @@ from aiohttp import web
 from typing import Any, Dict
 
 
-from model import DQN
+#from model import DQN
+from game import Game
 
-
+# Create a SocketIO server instance with CORS settings to allow connections from frontend
 sio = socketio.AsyncServer(cors_allowed_origins="*")
+# Create a web application instance
 app = web.Application()
+# Attach the socketio server to the web app
 sio.attach(app)
-
-
-# TODO: Create a SocketIO server instance with CORS settings to allow connections from frontend
-# Example: sio = socketio.AsyncServer(cors_allowed_origins="*")
-
-# TODO: Create a web application instance
-# Example: app = web.Application()
-
-# TODO: Attach the socketio server to the web app
-# Example: sio.attach(app)
-
 
 # Basic health check endpoint - keep this for server monitoring
 async def handle_ping(request: Any) -> Any:
@@ -33,7 +25,7 @@ async def handle_ping(request: Any) -> Any:
 @sio.event
 async def connect(sid: str, environ: Dict[str, Any]) -> None:
     """Handle client connections - called when a frontend connects to the server"""
-    # TODO: Print a message showing which client connected
+    print(f"Client connected: {sid}")
     # TODO: You might want to initialize game state here
     pass
 
@@ -42,7 +34,7 @@ async def connect(sid: str, environ: Dict[str, Any]) -> None:
 @sio.event
 async def disconnect(sid: str) -> None:
     """Handle client disconnections - cleanup any resources"""
-    # TODO: Print a message showing which client disconnected
+    print(f"Client disconnected: {sid}")
     # TODO: Clean up any game sessions or resources for this client
     pass
 
@@ -52,13 +44,18 @@ async def disconnect(sid: str) -> None:
 async def start_game(sid: str, data: Dict[str, Any]) -> None:
     """Initialize a new game when the frontend requests it"""
     # TODO: Extract game parameters from data (grid_width, grid_height, starting_tick)
+
     # TODO: Create a new Game instance and configure it
+    game = Game()
+    await sio.save_session(sid, {"game": game})
+
     # TODO: If implementing AI, create an agent instance here
     # TODO: Save the game state in the session using sio.save_session()
-    # TODO: Send initial game state to the client using sio.emit()
-    # TODO: Start the game update loop
 
-    pass
+    # TODO: Send initial game state to the client using sio.emit()
+    await sio.emit("update", game.to_dict())
+    # TODO: Start the game update loop
+    asyncio.create_task(update_game(sid))
 
 
 # TODO: Optional - Create event handlers for saving/loading AI models
@@ -67,6 +64,17 @@ async def start_game(sid: str, data: Dict[str, Any]) -> None:
 # TODO: Implement the main game loop
 async def update_game(sid: str) -> None:
     """Main game loop - runs continuously while the game is active"""
+    try:
+        async with sio.session(sid) as session:
+            while True:
+                game = session["game"]
+                game.step()
+                game.queue_change("RIGHT")
+                print(game.to_dict())
+                await sio.emit("update", game.to_dict())
+                await asyncio.sleep(game.to_dict()["game_tick"])
+    except Exception as e:
+        print(f"Game loop error for {sid}: {e}")
     # TODO: Create an infinite loop
     # TODO: Check if the session still exists (client hasn't disconnected)
     # TODO: Get the current game and agent state from the session
@@ -100,11 +108,15 @@ async def update_agent_game_state(game: Game, agent: Any) -> None:
 # TODO: Main server startup function
 async def main() -> None:
     """Start the web server and socketio server"""
-    # TODO: Add the ping endpoint to the web app router
-    # TODO: Create and configure the web server runner
-    # TODO: Start the server on the appropriate host and port
-    # TODO: Print server startup message
-    # TODO: Keep the server running indefinitely
+    app.router.add_get('/', handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, 'localhost', 8765)
+    await site.start()
+    print("Server started on http://localhost:8765")
+    # Keep server running
+    await asyncio.Event().wait()
+    
     # TODO: Handle any errors gracefully
     pass
 
